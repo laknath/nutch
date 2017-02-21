@@ -24,9 +24,11 @@ import java.io.FileReader;
 import java.io.Reader;
 import java.io.StringReader;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.HashSet;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.nutch.parse.HTMLMetaTags;
@@ -36,12 +38,9 @@ import org.apache.nutch.parse.ParseResult;
 import org.apache.nutch.plugin.Extension;
 import org.apache.nutch.plugin.PluginRepository;
 import org.apache.nutch.protocol.Content;
-
 import org.apache.commons.lang.StringUtils;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.w3c.dom.*;
 
 /**
@@ -86,10 +85,10 @@ public class RegexParseExtract implements HtmlParseFilter {
         LOG.error("source for regex rule: " + field + " misconfigured");
       }
       
-      if (matches(source, regexRule.regex)) {
-        parse.getData().getParseMeta().set(field, "true");
-      } else {
-        parse.getData().getParseMeta().set(field, "false");
+      //parse.getData().getParseMeta().set("my_field", "bloody hell");
+      
+      if (regexRule.regex != null){
+    	  parse.getData().getParseMeta().set(field, matchedString(source, regexRule.regex));
       }
     }
     
@@ -133,6 +132,25 @@ public class RegexParseExtract implements HtmlParseFilter {
     }
        
     return false;
+  }
+  
+  private String matchedString(String value, Pattern pattern) {
+	  //List<String> buf = new ArrayList<String>();
+	  HashSet<String> buf = new HashSet<String>();
+
+	  //System.out.println(pattern);
+	  if (value != null) {
+		  Matcher matcher = pattern.matcher(value);
+		  		  
+		  while (matcher.find()) {
+			  //System.out.println("Found a " + matcher.group() + ".");			  
+			  //System.out.println(matcher.groupCount());
+
+			  buf.add(matcher.group());
+		  }
+	  }
+
+	  return String.join(";", buf.toArray(new String[0]));
   }
   
   private synchronized void readConfiguration(Reader configReader) throws IOException {

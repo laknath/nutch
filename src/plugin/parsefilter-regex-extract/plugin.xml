@@ -31,11 +31,18 @@
       <import plugin="nutch-extensionpoints"/>
    </requires>
 
-   <extension id="org.apache.nutch.htmlparsefilter.regex"
+   <extension id="org.apache.nutch.htmlparsefilter.combined"
         name="Nutch Parser Filter" point="org.apache.nutch.parse.HtmlParseFilter">
       <implementation id="RegexParseExtract" 
                       class="org.apache.nutch.parsefilter.combined.RegexParseExtract">
       </implementation>
+   </extension>
+
+   <extension id="org.apache.nutch.indexer.combined"
+              name="Nutch dynamic field index"
+              point="org.apache.nutch.indexer.IndexingFilter">
+      <implementation id="DynamicFieldIndexer"
+                      class="org.apache.nutch.indexer.combined.DynamicFieldIndexer"/>
    </extension>
 
 </plugin>
