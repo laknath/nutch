@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.FileReader;
 import java.io.Reader;
 import java.io.StringReader;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,9 @@ public class RegexParseExtract implements HtmlParseFilter {
   private DocumentFragment doc;
   
   private static final Map<String,RegexRule> rules = new HashMap<String,RegexRule>();
+  private static final Map<String,RegexRule> replaceRules = new HashMap<String,RegexRule>();
+  private static final Map<String,String[]> replaceTerms = new HashMap<String,String[]>();
+
   
   public RegexParseExtract() {}
   
@@ -65,42 +69,21 @@ public class RegexParseExtract implements HtmlParseFilter {
   }
 
   public ParseResult filter(Content content, ParseResult parseResult, HTMLMetaTags metaTags, DocumentFragment doc) {
-    Parse parse = parseResult.get(content.getUrl());
-    String html = new String(content.getContent());
-    String text = parse.getText();
-    
-    for (Map.Entry<String, RegexRule> entry : rules.entrySet()) {
-      String field = entry.getKey();
-      RegexRule regexRule = entry.getValue();
-      
-      String source = null;
-      if (regexRule.source.equalsIgnoreCase("html")) {
-        source = html;
-      }
-      if (regexRule.source.equalsIgnoreCase("text")) {
-        source = text;
-      }
-      
-      if (source == null) {
-        LOG.error("source for regex rule: " + field + " misconfigured");
-      }
-      
-      //parse.getData().getParseMeta().set("my_field", "bloody hell");
-      
-      if (regexRule.regex != null){
-    	  parse.getData().getParseMeta().set(field, matchedString(source, regexRule.regex));
-      }
-    }
+	  
+    parseRegex(rules, content, parseResult, false);
+    parseRegex(replaceRules, content, parseResult, true);
     
     return parseResult;
   }
-
+  
   public void setConf(Configuration conf) {
     this.conf = conf;
 
     // domain file and attribute "file" take precedence if defined
     String file = conf.get("parsefilter.regex.file");
     String stringRules = conf.get("parsefilter.regex.rules");
+    String stringReplaceRules = conf.get("parsefilter.replace.rules");
+
     if (regexFile != null) {
       file = regexFile;
     }
@@ -119,10 +102,53 @@ public class RegexParseExtract implements HtmlParseFilter {
     catch (IOException e) {
       LOG.error(org.apache.hadoop.util.StringUtils.stringifyException(e));
     }
+    
+    if (stringReplaceRules != null) { // takes precedence over files
+    	reader = new StringReader(stringReplaceRules);
+    }
+    try {
+    	readReplaceConfiguration(reader);
+    }
+    catch (IOException e) {
+    	LOG.error(org.apache.hadoop.util.StringUtils.stringifyException(e));
+    }
   }
+  
 
   public Configuration getConf() {
     return this.conf;
+  }
+  
+  private void parseRegex(Map<String,RegexRule> rules, Content content, ParseResult parseResult, boolean replace) {
+	  Parse parse = parseResult.get(content.getUrl());
+	  String html = new String(content.getContent());
+	  String text = parse.getText();
+	  
+	  for (Map.Entry<String, RegexRule> entry : rules.entrySet()) {
+		  String field = entry.getKey();
+		  RegexRule regexRule = entry.getValue();
+
+		  String source = null;
+		  if (regexRule.source.equalsIgnoreCase("html")) {
+			  source = html;
+		  }
+		  if (regexRule.source.equalsIgnoreCase("text")) {
+			  source = text;
+		  }
+
+		  if (source == null) {
+			  LOG.error("source for regex rule: " + field + " misconfigured");
+		  }
+
+		  if (regexRule.regex != null){
+			  String match = matchedString(source, regexRule.regex, replace, field);
+			  // System.out.println(regexRule.regex + " " + field + " " + match);
+			  
+			  if (match != null && match != "") {				  
+				  parse.getData().getParseMeta().set(field, match);
+			  }
+		  }
+	  }  
   }
   
   private boolean matches(String value, Pattern pattern) {
@@ -134,19 +160,26 @@ public class RegexParseExtract implements HtmlParseFilter {
     return false;
   }
   
-  private String matchedString(String value, Pattern pattern) {
-	  //List<String> buf = new ArrayList<String>();
+  private String matchedString(String value, Pattern pattern, boolean replace, String field) {
 	  HashSet<String> buf = new HashSet<String>();
 
-	  //System.out.println(pattern);
 	  if (value != null) {
 		  Matcher matcher = pattern.matcher(value);
-		  		  
+		  		  		  	  
 		  while (matcher.find()) {
 			  //System.out.println("Found a " + matcher.group() + ".");			  
 			  //System.out.println(matcher.groupCount());
+			  String match = matcher.group();
+			  
+			  if (replace) {
+				  String[] terms = replaceTerms.get(field);
 
-			  buf.add(matcher.group());
+				  for (int i = 0; i < terms.length; i++){
+					  match = match.replaceAll(Pattern.quote(matcher.group(i+1)), terms[i]);
+				  }
+			  }
+			  
+			  buf.add(match);
 		  }
 	  }
 
@@ -178,10 +211,36 @@ public class RegexParseExtract implements HtmlParseFilter {
     }
   }
   
+  private synchronized void readReplaceConfiguration(Reader configReader) throws IOException {
+	  String line;
+	  BufferedReader reader = new BufferedReader(configReader);
+
+	  while ((line = reader.readLine()) != null) {
+		  if (StringUtils.isNotBlank(line) && !line.startsWith("#")) {
+			  line = line.trim();
+			  String[] parts = line.split("\\s");
+
+			  if (parts.length >= 3) {
+				  String field = parts[0].trim();
+				  String source = parts[1].trim();
+				  String regex = parts[2].trim();
+				  String[] terms = Arrays.copyOfRange(parts, 3, parts.length);
+
+				  replaceRules.put(field, new RegexRule(source, regex));
+				  replaceTerms.put(field, terms);
+				  
+				  //System.out.println("terms " + Arrays.toString(terms));
+			  } else {
+				  LOG.info("RegexParseExtract rule is invalid. " + line);
+			  }
+		  }
+	  }
+  }
+  
   private static class RegexRule {
     public RegexRule(String source, String regex) {
       this.source = source;
-      this.regex = Pattern.compile(regex);
+      this.regex = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
     }
     String source;
     Pattern regex;

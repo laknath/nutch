@@ -61,13 +61,11 @@ public class DynamicFieldIndexer implements IndexingFilter {
    * @return filtered NutchDocument
    */
   public NutchDocument filter(NutchDocument doc, Parse parse, Text url, CrawlDatum datum, Inlinks inlinks) throws IndexingException {
-
-	  System.out.println("my email: " + parse.getData().getParseMeta().get("email"));
-
+	  /*
 	  // add the fields from parsemd
 	  for (String name : parse.getData().getParseMeta().names()) {
 		  //System.out.println(name);
-	  }
+	  }*/
     
 	  return doc;
   }
